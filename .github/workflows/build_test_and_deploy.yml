@@ -1,0 +1,186 @@
+name: Build and deploy
+on: [push]
+
+env:
+  ECR_REGISTRY: 307238562370.dkr.ecr.eu-west-1.amazonaws.com
+  AWS_REGION: eu-west-1
+  AWS_PROFILE: voltti-sst
+  SERVICE_GROUP: integration
+  SERVICE_NAME: ${{ github.event.repository.name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Maven package
+        uses: espoon-voltti/integration-actions/integration-build@v1
+        with:
+          mvn_username: ${{ secrets.INTEGRATION_MAVEN_USERNAME }}
+          mvn_password: ${{ secrets.INTEGRATION_MAVEN_TOKEN }}
+
+      - name: Upload build file
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: target/*.jar
+          retention-days: 1
+
+  site:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Maven Site
+        uses: espoon-voltti/integration-actions/integration-site@v1
+        with:
+          mvn_username: ${{ secrets.INTEGRATION_MAVEN_USERNAME }}
+          mvn_password: ${{ secrets.INTEGRATION_MAVEN_TOKEN }}
+
+  dockerize:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v3
+
+      - name: Download build file
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: ./target
+
+      - name: Build from dockerfile and push to ECR
+        uses: espoon-voltti/voltti-actions/docker-build-push@v1
+        with:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.INTEGRATION_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.INTEGRATION_AWS_SECRET_ACCESS_KEY }}
+          AWS_CONFIG: ${{ secrets.AWS_CONFIG }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          registry: ${{ env.ECR_REGISTRY }}
+          name: integration/${SERVICE_NAME#integration-}
+          build-args: |
+            build= ${{ github.run_number }} \
+            commit=${{ github.sha }}
+
+  verify:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Maven verify
+        uses: espoon-voltti/integration-actions/integration-verify@v1
+        with:
+          mvn_username: ${{ secrets.INTEGRATION_MAVEN_USERNAME }}
+          mvn_password: ${{ secrets.INTEGRATION_MAVEN_TOKEN }}
+
+  deploy_dev:
+    needs:
+      - dockerize
+      - verify
+    runs-on: ubuntu-latest
+    if: ${{ !(github.ref_type == 'tag') }}
+    environment: dev
+    steps:
+      - name: Install kubectl versions
+        uses: espoon-voltti/integration-actions/integration-kubectl@v1
+
+      - name: Deploy Dev
+        uses: espoon-voltti/integration-actions/integration-deploy-service@v1
+        with:
+          aws_access_key_id: ${{ secrets.INTEGRATION_AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.INTEGRATION_AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ env.AWS_REGION }}
+          aws_profile: ${{ env.AWS_PROFILE }}
+          aws_config: ${{ secrets.AWS_CONFIG }}
+          gh_token: ${{ secrets.INTEGRATION_GH_TOKEN }}
+          cluster_name: ${{ secrets.INTEGRATION_EKS_NAME_DEV }}
+          kubectl_bin: ${{ secrets.INTEGRATION_KUBECTL_BIN_DEV }}
+          target_env: dev
+          service_group: ${{ env.SERVICE_GROUP }}
+          service_name: ${{ github.event.repository.name }}
+          service_version: ${{ github.sha }}
+
+  deploy_test:
+    needs:
+      - dockerize
+      - verify
+      - deploy_dev
+    runs-on: ubuntu-latest
+    if: ${{ !(github.ref_type == 'tag') }}
+    environment: test
+    env:
+      TARGET_ENV: test
+    steps:
+      - name: Install kubectl versions
+        uses: espoon-voltti/integration-actions/integration-kubectl@v1
+
+      - name: Deploy Test
+        uses: espoon-voltti/integration-actions/integration-deploy-service@v1
+        with:
+          aws_access_key_id: ${{ secrets.INTEGRATION_AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.INTEGRATION_AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ env.AWS_REGION }}
+          aws_profile: ${{ env.AWS_PROFILE }}
+          aws_config: ${{ secrets.AWS_CONFIG }}
+          gh_token: ${{ secrets.INTEGRATION_GH_TOKEN }}
+          cluster_name: ${{ secrets.INTEGRATION_EKS_NAME_TEST }}
+          kubectl_bin: ${{ secrets.INTEGRATION_KUBECTL_BIN_TEST }}
+          target_env: test
+          service_group: ${{ env.SERVICE_GROUP }}
+          service_name: ${{ github.event.repository.name }}
+          service_version: ${{ github.sha }}
+
+  deploy_staging:
+    needs:
+      - deploy_test
+    runs-on: ubuntu-latest
+    if: ${{ !(github.ref_type == 'tag') }}
+    environment: staging
+    steps:
+      - name: Install kubectl versions
+        uses: espoon-voltti/integration-actions/integration-kubectl@v1
+
+      - name: Deploy Staging
+        uses: espoon-voltti/integration-actions/integration-deploy-service@v1
+        with:
+          aws_access_key_id: ${{ secrets.INTEGRATION_AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.INTEGRATION_AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ env.AWS_REGION }}
+          aws_profile: ${{ env.AWS_PROFILE }}
+          aws_config: ${{ secrets.AWS_CONFIG }}
+          gh_token: ${{ secrets.INTEGRATION_GH_TOKEN }}
+          cluster_name: ${{ secrets.INTEGRATION_EKS_NAME_STAGING }}
+          kubectl_bin: ${{ secrets.INTEGRATION_KUBECTL_BIN_STAGING }}
+          target_env: staging
+          service_group: ${{ env.SERVICE_GROUP }}
+          service_name: ${{ github.event.repository.name }}
+          service_version: ${{ github.sha }}
+
+  deploy_prod:
+    needs:
+      - deploy_staging
+    runs-on: ubuntu-latest
+    if: ${{ !(github.ref_type == 'tag') && github.ref == 'refs/heads/master' }}
+    environment: prod
+    steps:
+      - name: Install kubectl versions
+        uses: espoon-voltti/integration-actions/integration-kubectl@v1
+
+      - name: Deploy Prod
+        uses: espoon-voltti/integration-actions/integration-deploy-service@v1
+        with:
+          aws_access_key_id: ${{ secrets.INTEGRATION_AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.INTEGRATION_AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ env.AWS_REGION }}
+          aws_profile: ${{ env.AWS_PROFILE }}
+          aws_config: ${{ secrets.AWS_CONFIG }}
+          gh_token: ${{ secrets.INTEGRATION_GH_TOKEN }}
+          cluster_name: ${{ secrets.INTEGRATION_EKS_NAME_PROD }}
+          kubectl_bin: ${{ secrets.INTEGRATION_KUBECTL_BIN_PROD }}
+          target_env: prod
+          service_group: ${{ env.SERVICE_GROUP }}
+          service_name: ${{ github.event.repository.name }}
+          service_version: ${{ github.sha }}

@@ -1,0 +1,62 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>fi.espoo.integration</groupId>
+    <artifactId>integration-parent-service</artifactId>
+    <version>4.0.0</version>
+  </parent>
+
+  <artifactId>integration-template</artifactId>
+  <version>3.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>Integration Template</name>
+
+  <properties>
+    <encoding>UTF-8</encoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>fi.espoo.integration</groupId>
+      <artifactId>integration-ssm-lib</artifactId>
+      <version>2.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>fi.espoo.integration</groupId>
+      <artifactId>integration-camel-utils-lib</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>42.5.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+  </build>
+
+  <repositories>
+    <repository>
+      <id>github</id>
+      <name>GitHub espoon-voltti Apache Maven Packages</name>
+      <url>https://maven.pkg.github.com/espoon-voltti/voltti-maven-private</url>
+    </repository>
+  </repositories>
+
+</project>
