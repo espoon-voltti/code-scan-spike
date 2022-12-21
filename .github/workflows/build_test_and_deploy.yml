@@ -14,10 +14,18 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
           server-id: github
+          
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: java
 
       - name: Build with Maven
         shell: bash
         run: mvn package
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
 
       - name: Upload test reports
         uses: actions/upload-artifact@v3
