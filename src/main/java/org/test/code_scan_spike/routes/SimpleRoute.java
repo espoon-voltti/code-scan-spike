@@ -1,13 +1,34 @@
 package org.test.code_scan_spike.routes;
 
+import org.apache.camel.Exchange;
 import org.apache.camel.Expression;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.http.HttpMethods;
 import org.apache.camel.language.simple.SimpleLanguage;
 import org.apache.camel.processor.aggregate.UseOriginalAggregationStrategy;
+import org.apache.camel.support.ExpressionAdapter;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.AuthSchemes;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.Collections;
 
 /**
  * Use javadoc comments to describe briefly what and why the class exists (if not self-evident).
@@ -17,6 +38,30 @@ import org.springframework.stereotype.Component;
 @Component
 public class SimpleRoute extends RouteBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(SimpleRoute.class);
+
+    public CloseableHttpClient client;
+
+    @PostConstruct
+    public void initialize() {
+        CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+        credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials("tyranno", "saurus"));
+        this.client = HttpClients.custom()
+                .setDefaultCredentialsProvider(credentialsProvider)
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setAuthenticationEnabled(true)
+                        .setTargetPreferredAuthSchemes(Collections.singleton(AuthSchemes.BASIC))
+                        .build()
+                ).build();
+    }
+
+    @PreDestroy
+    public void tearDown() {
+        try {
+            client.close();
+        } catch (IOException e) {
+            LOGGER.warn("Exception while closing http client.", e);
+        }
+    }
 
     /**
      * Camel routes showing an example for splitting message.
@@ -62,6 +107,21 @@ public class SimpleRoute extends RouteBuilder {
 //                    ex.setProperty("boolean", true);
 //                }
             })
+            .setHeader("Authorization", new ExpressionAdapter() {
+                @Override
+                public Object evaluate(Exchange exchange) {
+                    return authorization();
+                }
+            })
+            .setHeader(Exchange.HTTP_METHOD, HttpMethods.GET)
+            .to("http://localhost:8989/hello")
+            .process(ex -> {
+                HttpGet req = new HttpGet();
+                req.setURI(new URI("http://localhost:8989/hello"));
+                    try (CloseableHttpResponse res = this.client.execute(req)) {
+                        ex.getIn().setBody(res.getEntity().getContent().readAllBytes());
+                    }
+            })
             .setBody(simple("hello,world")).id("SimpleRoute.process.setBody1")
             .log(LoggingLevel.INFO, LOGGER, "Processing: Message ${exchangeProperty.logId} body set to ${body}");
 
@@ -77,8 +137,12 @@ public class SimpleRoute extends RouteBuilder {
                 .log(LoggingLevel.INFO, LOGGER, "Done: Child message ${exchangeProperty.logId} done").id("SimpleRoute.split.lastlog")
             .end();
     }
-    
+
     private Boolean booleanMethod() {
         return null;
+    }
+
+    private String authorization() {
+        return "Basic " + Base64.getEncoder().encodeToString("tyranno:saurus".getBytes(StandardCharsets.UTF_8));
     }
 }

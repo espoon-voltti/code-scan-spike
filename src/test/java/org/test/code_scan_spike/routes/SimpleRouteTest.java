@@ -1,5 +1,6 @@
 package org.test.code_scan_spike.routes;
 
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
@@ -8,6 +9,7 @@ import org.apache.camel.test.spring.junit5.CamelSpringBootTest;
 import org.apache.camel.test.spring.junit5.EnableRouteCoverage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,11 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.test.code_scan_spike.Application;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.apache.camel.builder.AdviceWith.adviceWith;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -37,16 +44,20 @@ public class SimpleRouteTest {
 
     @Autowired
     private ProducerTemplate producerTemplate;
+    
+    @RegisterExtension
+    static WireMockExtension wiremock = WireMockExtension.newInstance()
+            .options(wireMockConfig().port(8989))
+            .configureStaticDsl(true)
+            .build();
 
     private static boolean alreadySetup = false;
 
     @BeforeEach
-    public void resetMockEndpoints() {
-        MockEndpoint.resetMocks(camelContext);
-    }
-
-    @BeforeEach
     public void setupRoutes() throws Exception {
+        wiremock.resetAll();
+        MockEndpoint.resetMocks(camelContext);
+        
         if (alreadySetup) {
             return;
         }
@@ -102,6 +113,13 @@ public class SimpleRouteTest {
 
     @Test
     public void testProcess() throws Exception {
+        stubFor(get(urlPathEqualTo("/hello"))
+                .withBasicAuth("tyranno", "saurus")
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("World!")
+                )
+        );
         //ensure that route create a correct body
         MockEndpoint resultEndpoint = camelContext.getEndpoint("mock:check", MockEndpoint.class);
         resultEndpoint.expectedBodiesReceived("hello,world");
