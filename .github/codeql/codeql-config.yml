@@ -1,0 +1,3 @@
+name: "CodeQL config"
+packs:
+  - codeql/java-queries
