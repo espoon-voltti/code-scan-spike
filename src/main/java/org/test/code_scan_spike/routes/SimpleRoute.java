@@ -50,6 +50,18 @@ public class SimpleRoute extends RouteBuilder {
                 Expression expression = simple.createExpression("SimpleBuilder test: ${messageHistory} + \nHeaders: ${in.headers}");
                 LOGGER.info("Simple.value=" + expression.evaluate(exchange, String.class));
             })
+            .process(ex -> {
+                String[] field = {"a", "b", "c", "s", "e"};
+                String s = "";
+                for (int i = 0; i < field.length; ++i) {
+                    s = s + field[i];
+                }
+                ex.setProperty("string", s);
+                
+//                if (booleanMethod()) {
+//                    ex.setProperty("boolean", true);
+//                }
+            })
             .setBody(simple("hello,world")).id("SimpleRoute.process.setBody1")
             .log(LoggingLevel.INFO, LOGGER, "Processing: Message ${exchangeProperty.logId} body set to ${body}");
 
@@ -64,5 +76,9 @@ public class SimpleRoute extends RouteBuilder {
                         "with correlationId ${exchangeProperty.correlationId} and body ${body}")
                 .log(LoggingLevel.INFO, LOGGER, "Done: Child message ${exchangeProperty.logId} done").id("SimpleRoute.split.lastlog")
             .end();
+    }
+    
+    private Boolean booleanMethod() {
+        return null;
     }
 }
